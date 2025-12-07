@@ -15,16 +15,10 @@ class TTSApp(ctk.CTk):
         # --- Center Window Logic ---
         window_width = 500
         window_height = 550
-
-        # Get the screen dimension
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-
-        # Find the center point
         center_x = int(screen_width / 2 - window_width / 2)
         center_y = int(screen_height / 2 - window_height / 2)
-
-        # Set the position of the window to the center of the screen
         self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
         # ---------------------------
 
@@ -48,12 +42,13 @@ class TTSApp(ctk.CTk):
             self.main_dropdown.set(default_dev)
         
         # 2. Secondary Speaker Checkbox
-        self.single_output_var = ctk.BooleanVar(value=True)
+        # CHANGE: Default value set to False (Unchecked) to enable Dual Output by default
+        self.single_output_var = ctk.BooleanVar(value=False)
         self.chk_single = ctk.CTkCheckBox(self, text="Output only to Main Speaker", 
                                           variable=self.single_output_var, command=self._toggle_secondary)
         self.chk_single.pack(pady=10)
 
-        # 3. Secondary Speaker UI (Hidden)
+        # 3. Secondary Speaker UI (Hidden initially, shown via toggle below)
         self.sec_frame = ctk.CTkFrame(self, fg_color="transparent")
         ctk.CTkLabel(self.sec_frame, text="Secondary Output:").pack(pady=(5,5))
         self.sec_dropdown = ctk.CTkOptionMenu(self.sec_frame, values=dev_names, width=350)
@@ -80,6 +75,10 @@ class TTSApp(ctk.CTk):
         self.speak_btn.pack(pady=5)
         self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
         self.status_label.pack(pady=5)
+
+        # CHANGE: Trigger the toggle manually once to show the secondary UI 
+        # and auto-select the VB-Cable immediately on startup.
+        self._toggle_secondary()
 
     def _toggle_secondary(self):
         if self.single_output_var.get():
@@ -136,6 +135,8 @@ class TTSApp(ctk.CTk):
             # Secondary Device
             if not self.single_output_var.get():
                 sec_name = self.sec_dropdown.get()
+                # Even if names are same, we might want to play to verify, 
+                # but usually playing to the same device twice causes issues.
                 if sec_name != self.main_dropdown.get():
                     t2 = threading.Thread(target=self.audio.play_audio, args=(sec_name,))
                     threads.append(t2)
