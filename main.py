@@ -2,145 +2,174 @@ import customtkinter as ctk
 import pyttsx3
 import sounddevice as sd
 import soundfile as sf
-import keyboard
 import os
 import tempfile
 import threading
+import scipy.signal
 import numpy as np
+
+try:
+    import pythoncom
+except ImportError:
+    pythoncom = None
 
 class TTSApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("TTS to Mic Injector")
-        self.geometry("600x550")
+        self.title("TTS Player")
+        self.geometry("500x450")
         
         # --- Variables ---
-        self.engine = pyttsx3.init()
         self.temp_file = os.path.join(tempfile.gettempdir(), "tts_temp_output.wav")
-        self.output_devices = self.get_output_devices()
+        self.output_devices = self.get_clean_devices()
+        self.is_speaking = False
+        self.placeholder_text = "Type here and press enter..."
         
         # --- GUI Layout ---
+        self.dev_label = ctk.CTkLabel(self, text="Select Speaker:")
+        self.dev_label.pack(pady=(15, 5))
         
-        # 1. Main Speaker (Your Headphones)
-        self.lbl_main = ctk.CTkLabel(self, text="Your Speakers (Monitor):")
-        self.lbl_main.pack(pady=(10, 0))
-        self.main_device_dropdown = ctk.CTkOptionMenu(self, values=[d['name'] for d in self.output_devices], width=400)
-        self.main_device_dropdown.pack(pady=5)
-        
-        # 2. Virtual Mic Output (VB-Cable)
-        self.lbl_mic = ctk.CTkLabel(self, text="Virtual Mic (CABLE Input):")
-        self.lbl_mic.pack(pady=(10, 0))
-        
-        # Try to auto-select CABLE Input if it exists
         dev_names = [d['name'] for d in self.output_devices]
-        self.mic_device_dropdown = ctk.CTkOptionMenu(self, values=dev_names, width=400)
-        self.mic_device_dropdown.pack(pady=5)
+        self.device_dropdown = ctk.CTkOptionMenu(self, values=dev_names, width=350)
+        self.device_dropdown.pack(pady=5)
         
-        # Auto-select VB-Cable if found
-        for name in dev_names:
-            if "CABLE Input" in name or "VB-Audio" in name:
-                self.mic_device_dropdown.set(name)
-                break
+        # Auto-Select Default Logic
+        default_device_name = self.get_wasapi_default_name()
+        if default_device_name and default_device_name in dev_names:
+            self.device_dropdown.set(default_device_name)
+        elif dev_names:
+            self.device_dropdown.set(dev_names[0])
 
-        # Checkbox to enable/disable mic injection
-        self.use_mic_var = ctk.BooleanVar(value=True)
-        self.chk_mic = ctk.CTkCheckBox(self, text="Inject to Microphone", variable=self.use_mic_var)
-        self.chk_mic.pack(pady=10)
-
-        # 3. Speed
+        # Speed Slider
         self.speed_label = ctk.CTkLabel(self, text="Speed:")
         self.speed_label.pack(pady=(10, 0))
-        self.speed_slider = ctk.CTkSlider(self, from_=50, to=400)
+        self.speed_slider = ctk.CTkSlider(self, from_=50, to=350)
         self.speed_slider.set(200)
         self.speed_slider.pack(pady=5)
         
-        # 4. Text Input
-        self.text_entry = ctk.CTkTextbox(self, height=100, width=500)
+        # --- Text Input with Placeholder ---
+        self.text_entry = ctk.CTkTextbox(self, height=100, width=400, text_color="gray")
         self.text_entry.pack(pady=20)
-        self.text_entry.insert("0.0", "Hello world")
         
-        # 5. Buttons
-        self.speak_btn = ctk.CTkButton(self, text="Speak (Enter)", command=self.trigger_speech)
-        self.speak_btn.pack(pady=10)
+        # Insert Placeholder initially
+        self.text_entry.insert("0.0", self.placeholder_text)
+        
+        # Bind Focus Events for Placeholder effect
+        self.text_entry.bind("<FocusIn>", self.on_focus_in)
+        self.text_entry.bind("<FocusOut>", self.on_focus_out)
+        self.text_entry.bind("<Return>", self.on_enter_pressed)
+        
+        # --- Buttons ---
+        self.speak_btn = ctk.CTkButton(self, text="Speak", command=self.trigger_speech)
+        self.speak_btn.pack(pady=5)
 
         self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
         self.status_label.pack(pady=5)
 
-        # --- Bindings ---
-        self.text_entry.bind("<Return>", self.on_enter_pressed)
-        keyboard.add_hotkey('F8', self.trigger_speech)
+    # --- Placeholder Logic ---
+    def on_focus_in(self, event):
+        """Remove placeholder when user clicks inside"""
+        current_text = self.text_entry.get("0.0", "end-1c").strip()
+        if current_text == self.placeholder_text:
+            self.text_entry.delete("0.0", "end")
+            # Change color back to normal (Theme dependent: Black or White)
+            self.text_entry.configure(text_color=("black", "white"))
 
-    def get_output_devices(self):
-        """Get list of output devices"""
+    def on_focus_out(self, event):
+        """Restore placeholder if user leaves it empty"""
+        current_text = self.text_entry.get("0.0", "end-1c").strip()
+        if not current_text:
+            self.text_entry.insert("0.0", self.placeholder_text)
+            self.text_entry.configure(text_color="gray")
+
+    def get_wasapi_default_name(self):
+        try:
+            hostapis = sd.query_hostapis()
+            for api in hostapis:
+                if "WASAPI" in api['name']:
+                    def_index = api['default_output_device']
+                    if def_index >= 0:
+                        return sd.query_devices(def_index)['name']
+        except Exception:
+            pass
+        return None
+
+    def get_clean_devices(self):
         devices = sd.query_devices()
-        outputs = []
+        hostapis = sd.query_hostapis()
+        wasapi_index = next((i for i, api in enumerate(hostapis) if "WASAPI" in api['name']), None)
+        
+        unique = []
+        seen = set()
         for i, dev in enumerate(devices):
             if dev['max_output_channels'] > 0:
-                dev['id'] = i 
-                outputs.append(dev)
-        return outputs
+                if wasapi_index is not None and dev['hostapi'] != wasapi_index:
+                    continue
+                if dev['name'] not in seen:
+                    dev['id'] = i
+                    unique.append(dev)
+                    seen.add(dev['name'])
+        return unique
 
     def on_enter_pressed(self, event):
         self.trigger_speech()
         return "break"
 
     def trigger_speech(self):
+        if self.is_speaking: return
         threading.Thread(target=self.process_speech, daemon=True).start()
 
-    def play_audio(self, data, fs, device_name):
-        """Helper to play audio on a specific device"""
-        try:
-            device_id = next(d['id'] for d in self.output_devices if d['name'] == device_name)
-            sd.play(data, fs, device=device_id)
-            sd.wait()
-        except Exception as e:
-            print(f"Error playing on {device_name}: {e}")
-
     def process_speech(self):
-        text = self.text_entry.get("0.0", "end").strip()
-        if not text: return
-
-        self.status_label.configure(text="Generating...", text_color="orange")
+        # Get text and clean it
+        raw_text = self.text_entry.get("0.0", "end").strip()
         
-        try:
-            # Generate Audio
-            rate = int(self.speed_slider.get())
-            self.engine.setProperty('rate', rate)
-            self.engine.save_to_file(text, self.temp_file)
-            self.engine.runAndWait()
-            
-            # Read Audio
-            data, fs = sf.read(self.temp_file)
-            
-            # Identify devices
-            main_speaker = self.main_device_dropdown.get()
-            mic_injector = self.mic_device_dropdown.get()
-            
-            threads = []
-            
-            # 1. Thread for Main Speaker (Monitoring)
-            t1 = threading.Thread(target=self.play_audio, args=(data, fs, main_speaker))
-            threads.append(t1)
-            t1.start()
-            
-            # 2. Thread for Virtual Mic (Injection)
-            if self.use_mic_var.get():
-                t2 = threading.Thread(target=self.play_audio, args=(data, fs, mic_injector))
-                threads.append(t2)
-                t2.start()
+        # LOGIC: If empty or still showing placeholder -> Speak "Test"
+        if not raw_text or raw_text == self.placeholder_text:
+            text_to_speak = "Test"
+        else:
+            text_to_speak = raw_text
 
-            self.status_label.configure(text="Speaking...", text_color="green")
+        self.is_speaking = True
+        self.status_label.configure(text="Generating...", text_color="orange")
+        self.speak_btn.configure(state="disabled")
+
+        try:
+            if pythoncom: pythoncom.CoInitialize()
             
-            # Wait for threads to finish
-            for t in threads:
-                t.join()
+            engine = pyttsx3.init()
+            engine.setProperty('rate', int(self.speed_slider.get()))
+            engine.save_to_file(text_to_speak, self.temp_file)
+            engine.runAndWait()
+            del engine
+
+            selected_name = self.device_dropdown.get()
+            target_device = next((d for d in self.get_clean_devices() if d['name'] == selected_name), None)
+            
+            if target_device:
+                data, fs = sf.read(self.temp_file)
+                target_fs = int(target_device['default_samplerate'])
                 
-            self.status_label.configure(text="Ready", text_color="gray")
+                if fs != target_fs:
+                    self.status_label.configure(text="Resampling...", text_color="orange")
+                    samples = round(len(data) * float(target_fs) / fs)
+                    data = scipy.signal.resample(data, samples)
+                    fs = target_fs 
+
+                self.status_label.configure(text=f"Playing: '{text_to_speak}'", text_color="green")
+                sd.play(data, fs, device=target_device['id'])
+                sd.wait()
             
+            self.status_label.configure(text="Ready", text_color="gray")
+
         except Exception as e:
             self.status_label.configure(text=f"Error: {e}", text_color="red")
-            print(e)
+            print(f"Error: {e}")
+        
+        finally:
+            self.is_speaking = False
+            self.speak_btn.configure(state="normal")
+            if pythoncom: pythoncom.CoUninitialize()
 
 if __name__ == "__main__":
     app = TTSApp()
