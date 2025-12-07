@@ -11,7 +11,23 @@ class TTSApp(ctk.CTk):
         
         # Window Setup
         self.title("Modular TTS Player")
-        self.geometry("500x550")
+        
+        # --- Center Window Logic ---
+        window_width = 500
+        window_height = 550
+
+        # Get the screen dimension
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Find the center point
+        center_x = int(screen_width / 2 - window_width / 2)
+        center_y = int(screen_height / 2 - window_height / 2)
+
+        # Set the position of the window to the center of the screen
+        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+        # ---------------------------
+
         self.is_speaking = False
         self.placeholder_text = "Type here and press enter..."
 
