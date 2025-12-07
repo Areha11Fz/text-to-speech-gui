@@ -10,7 +10,7 @@ class TTSApp(ctk.CTk):
         self.audio = AudioBackend()
         
         # Window Setup
-        self.title("Modular TTS Player")
+        self.title("TTS Player GUI")
         
         # --- Center Window Logic ---
         window_width = 500
@@ -41,14 +41,13 @@ class TTSApp(ctk.CTk):
         if default_dev and default_dev in dev_names:
             self.main_dropdown.set(default_dev)
         
-        # 2. Secondary Speaker Checkbox
-        # CHANGE: Default value set to False (Unchecked) to enable Dual Output by default
+        # 2. Secondary Speaker Checkbox (Default: False/Unchecked)
         self.single_output_var = ctk.BooleanVar(value=False)
         self.chk_single = ctk.CTkCheckBox(self, text="Output only to Main Speaker", 
                                           variable=self.single_output_var, command=self._toggle_secondary)
         self.chk_single.pack(pady=10)
 
-        # 3. Secondary Speaker UI (Hidden initially, shown via toggle below)
+        # 3. Secondary Speaker UI
         self.sec_frame = ctk.CTkFrame(self, fg_color="transparent")
         ctk.CTkLabel(self.sec_frame, text="Secondary Output:").pack(pady=(5,5))
         self.sec_dropdown = ctk.CTkOptionMenu(self.sec_frame, values=dev_names, width=350)
@@ -65,19 +64,25 @@ class TTSApp(ctk.CTk):
         self.text_entry.pack(pady=20)
         self.text_entry.insert("0.0", self.placeholder_text)
         
-        # Bindings
         self.text_entry.bind("<FocusIn>", self._on_focus_in)
         self.text_entry.bind("<FocusOut>", self._on_focus_out)
         self.text_entry.bind("<Return>", self._on_enter)
 
-        # 6. Action
-        self.speak_btn = ctk.CTkButton(self, text="Speak", command=self.trigger_speech)
-        self.speak_btn.pack(pady=5)
+        # 6. Buttons Frame (Speak & Clear)
+        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.btn_frame.pack(pady=5)
+
+        self.speak_btn = ctk.CTkButton(self.btn_frame, text="Speak", command=self.trigger_speech)
+        self.speak_btn.pack(side="left", padx=10)
+
+        self.clear_btn = ctk.CTkButton(self.btn_frame, text="Clear", fg_color="#555555", hover_color="#333333", command=self.clear_text)
+        self.clear_btn.pack(side="left", padx=10)
+
+        # 7. Status
         self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
         self.status_label.pack(pady=5)
 
-        # CHANGE: Trigger the toggle manually once to show the secondary UI 
-        # and auto-select the VB-Cable immediately on startup.
+        # Trigger toggle once to setup initial state
         self._toggle_secondary()
 
     def _toggle_secondary(self):
@@ -104,6 +109,14 @@ class TTSApp(ctk.CTk):
     def _on_enter(self, event):
         self.trigger_speech()
         return "break"
+
+    def clear_text(self):
+        """Clears text and restores placeholder"""
+        self.text_entry.delete("0.0", "end")
+        self.text_entry.insert("0.0", self.placeholder_text)
+        self.text_entry.configure(text_color="gray")
+        # Optional: Set focus to dummy element so user sees the gray placeholder immediately
+        self.focus() 
 
     def trigger_speech(self):
         if self.is_speaking: return
@@ -135,8 +148,6 @@ class TTSApp(ctk.CTk):
             # Secondary Device
             if not self.single_output_var.get():
                 sec_name = self.sec_dropdown.get()
-                # Even if names are same, we might want to play to verify, 
-                # but usually playing to the same device twice causes issues.
                 if sec_name != self.main_dropdown.get():
                     t2 = threading.Thread(target=self.audio.play_audio, args=(sec_name,))
                     threads.append(t2)
