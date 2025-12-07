@@ -1,22 +1,24 @@
-# TTS Player GUI (Dual Output Support)
+# TTS Player GUI
 
-A modern, modular Python application for Text-to-Speech (TTS) on Windows. It features a clean GUI, audio resampling to prevent hardware errors, and the unique ability to output audio to two devices simultaneously (e.g., your headphones + a virtual microphone for gaming/Discord).
+A modular, modern Text-to-Speech application for Windows. It allows you to type text and play it back through specific audio hardware (speakers, headphones) or virtual cables (for mixing into microphones).
 
 ## 🚀 Features
 
-- **Modern GUI:** Built with `customtkinter` for a dark-mode, clean look.
-- **Dual Audio Output:** Play TTS to your speakers AND a virtual cable (like VB-Audio) at the same time.
-- **Smart Device Filtering:** Automatically filters out duplicate drivers and legacy MME devices, showing only clean WASAPI device names.
-- **Auto-Resampling:** Fixes "Invalid Sample Rate" errors by automatically converting TTS audio to match your hardware's Hz (e.g., 48kHz).
-- **Global Hotkeys:** (Optional in code) Easy to expand for global keybinds.
-- **Modular Code:** Split into logic (`audio_backend.py`), UI (`app_ui.py`), and entry (`main.py`) for easy maintenance.
+- **Dual Output:** Option to play audio to your main speakers AND a secondary device (like VB-Cable) simultaneously.
+- **Modern UI:** Clean dark-mode interface using `customtkinter`.
+- **Hardware Safe:** Auto-detects WASAPI devices and resamples audio frequencies to prevent "Invalid Sample Rate" errors.
+- **Window Management:** Automatically centers on your screen upon launch.
+- **Modular Code:** Logic, UI, and Entry point are separated for easy maintenance.
+- **Build Ready:** Includes a script to compile into a standalone `.exe`.
 
-## 🛠️ Prerequisites
+## 📂 Project Structure
 
-1.  **Python 3.8+** installed on your system.
-2.  **(Optional)** [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) if you want to use the "Inject to Mic" feature.
+- `main.py`: The entry point script.
+- `app_ui.py`: Handles the GUI, buttons, and layout.
+- `audio_backend.py`: Handles TTS generation, audio routing, and resampling.
+- `build.py`: A script to compile the project into an EXE file.
 
-## 📦 Installation
+## 🛠️ Installation
 
 1.  **Clone the repository:**
 
@@ -26,40 +28,45 @@ A modern, modular Python application for Text-to-Speech (TTS) on Windows. It fea
     ```
 
 2.  **Install dependencies:**
+
     ```bash
     pip install -r requirements.txt
     ```
 
+3.  **(Optional) Virtual Cable:** To use the secondary output feature for Discord/Games, install [VB-Audio Virtual Cable](https://vb-audio.com/Cable/).
+
 ## ▶️ Usage
 
-1.  Run the application:
+Run the application via Python:
 
+```bash
+python main.py
+```
+
+1.  **Select Speaker:** The app auto-selects your default Windows device.
+2.  **Dual Output:** Uncheck "Output only to Main Speaker" to reveal the secondary dropdown. This usually auto-selects "CABLE Input".
+3.  **Type & Speak:** Type your text and press Enter or click Speak.
+4.  **Clear:** Click the "Clear" button to reset the text field.
+
+## 📦 Building the EXE
+
+To create a standalone executable that runs without Python installed:
+
+1.  Ensure you have installed the requirements.
+2.  Run the build script:
     ```bash
-    python main.py
+    python build.py
     ```
-
-2.  **Select Main Speaker:** Choose your headphones/speakers from the top dropdown.
-3.  **Dual Output (Optional):**
-    - Uncheck **"Output only to Main Speaker"**.
-    - A second dropdown will appear.
-    - Select your Virtual Cable (e.g., `CABLE Input (VB-Audio Virtual Cable)`).
-4.  **Type & Speak:**
-    - Type text into the box and press **Enter** or click **Speak**.
-    - Use the **Speed** slider to adjust how fast the voice talks.
-    - Click **Clear** to reset the text box.
-
-## 📂 Project Structure
-
-- `main.py`: The entry point. Runs the application.
-- `app_ui.py`: Handles the Window, Buttons, Checkboxes, and Layouts.
-- `audio_backend.py`: Handles the heavy lifting (Generating TTS, finding devices, resampling audio).
+3.  Wait for the process to finish.
+4.  Navigate to the new `dist` folder.
+5.  Your portable **`TTS_Player_GUI.exe`** is ready to use.
 
 ## 🔧 Troubleshooting
 
-- **No sound?** Ensure your volume is up and the correct device is selected.
-- **Error: "Invalid Sample Rate"?** The app attempts to fix this automatically using `scipy`. If it persists, ensure your device format in Windows Sound Control Panel is set to 44100Hz or 48000Hz.
-- **App freezes when speaking?** This app uses threading to prevent freezing, but generating very long text paragraphs may take a moment.
+- **No Audio:** Check if the correct device is selected in the dropdown.
+- **EXE crashing immediately:** Ensure you built it using `python build.py` and not just `pyinstaller main.py`, as CustomTkinter needs specific theme files to be copied over.
+- **Virus Warning:** If Windows Defender flags the EXE, it is a "False Positive" common with PyInstaller. You may need to add an exception.
 
 ## 📄 License
 
-Open Source. Feel free to modify and use.
+Open Source.
