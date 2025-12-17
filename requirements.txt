@@ -6,3 +6,4 @@ scipy
 numpy
 pywin32
 pyinstaller
+keyboard

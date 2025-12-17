@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import threading
+import keyboard
 from audio_backend import AudioBackend
 
 class TTSApp(ctk.CTk):
@@ -27,6 +28,13 @@ class TTSApp(ctk.CTk):
 
         self._setup_ui()
 
+        # --- GLOBAL HOTKEY SETUP ---
+        # Changed from 'shift+enter' to 'ctrl+space'
+        keyboard.add_hotkey('ctrl+space', self.trigger_speech)
+
+        # Handle app closing safely
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
     def _setup_ui(self):
         """Constructs all GUI elements"""
         dev_names = self.audio.get_device_names()
@@ -41,7 +49,7 @@ class TTSApp(ctk.CTk):
         if default_dev and default_dev in dev_names:
             self.main_dropdown.set(default_dev)
         
-        # 2. Secondary Speaker Checkbox (Default: False/Unchecked)
+        # 2. Secondary Speaker Checkbox
         self.single_output_var = ctk.BooleanVar(value=False)
         self.chk_single = ctk.CTkCheckBox(self, text="Output only to Main Speaker", 
                                           variable=self.single_output_var, command=self._toggle_secondary)
@@ -68,7 +76,7 @@ class TTSApp(ctk.CTk):
         self.text_entry.bind("<FocusOut>", self._on_focus_out)
         self.text_entry.bind("<Return>", self._on_enter)
 
-        # 6. Buttons Frame (Speak & Clear)
+        # 6. Buttons Frame
         self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.btn_frame.pack(pady=5)
 
@@ -78,11 +86,10 @@ class TTSApp(ctk.CTk):
         self.clear_btn = ctk.CTkButton(self.btn_frame, text="Clear", fg_color="#555555", hover_color="#333333", command=self.clear_text)
         self.clear_btn.pack(side="left", padx=10)
 
-        # 7. Status
-        self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
+        # 7. Status (Updated Label Text)
+        self.status_label = ctk.CTkLabel(self, text="Ready (Global: Ctrl+Space)", text_color="gray")
         self.status_label.pack(pady=5)
 
-        # Trigger toggle once to setup initial state
         self._toggle_secondary()
 
     def _toggle_secondary(self):
@@ -90,7 +97,6 @@ class TTSApp(ctk.CTk):
             self.sec_frame.pack_forget()
         else:
             self.sec_frame.pack(after=self.chk_single, pady=5)
-            # Auto-select VB Cable logic
             for name in self.sec_dropdown._values:
                 if "CABLE" in name or "VB-Audio" in name:
                     self.sec_dropdown.set(name)
@@ -111,20 +117,30 @@ class TTSApp(ctk.CTk):
         return "break"
 
     def clear_text(self):
-        """Clears text and restores placeholder"""
         self.text_entry.delete("0.0", "end")
         self.text_entry.insert("0.0", self.placeholder_text)
         self.text_entry.configure(text_color="gray")
-        # Optional: Set focus to dummy element so user sees the gray placeholder immediately
         self.focus() 
 
+    def on_close(self):
+        """Clean up hotkeys when closing"""
+        try:
+            keyboard.unhook_all()
+        except:
+            pass
+        self.destroy()
+
     def trigger_speech(self):
-        if self.is_speaking: return
+        if self.is_speaking: 
+            return
         threading.Thread(target=self._process_speech_thread, daemon=True).start()
 
     def _process_speech_thread(self):
-        """Worker thread logic"""
-        raw = self.text_entry.get("0.0", "end").strip()
+        try:
+            raw = self.text_entry.get("0.0", "end").strip()
+        except RuntimeError:
+            return 
+            
         text = "Test" if (not raw or raw == self.placeholder_text) else raw
 
         self.is_speaking = True
@@ -132,20 +148,15 @@ class TTSApp(ctk.CTk):
         self.status_label.configure(text="Generating...", text_color="orange")
 
         try:
-            # 1. Generate
             self.audio.generate_tts_file(text, self.speed_slider.get())
-
-            # 2. Play
             self.status_label.configure(text=f"Playing: '{text}'", text_color="green")
             
             threads = []
             
-            # Main Device
             t1 = threading.Thread(target=self.audio.play_audio, args=(self.main_dropdown.get(),))
             threads.append(t1)
             t1.start()
 
-            # Secondary Device
             if not self.single_output_var.get():
                 sec_name = self.sec_dropdown.get()
                 if sec_name != self.main_dropdown.get():
@@ -155,11 +166,15 @@ class TTSApp(ctk.CTk):
 
             for t in threads: t.join()
             
-            self.status_label.configure(text="Ready", text_color="gray")
+            # Updated Status Label here as well
+            self.status_label.configure(text="Ready (Global: Ctrl+Space)", text_color="gray")
 
         except Exception as e:
             self.status_label.configure(text=f"Error: {e}", text_color="red")
             print(e)
         finally:
             self.is_speaking = False
-            self.speak_btn.configure(state="normal")
+            try:
+                self.speak_btn.configure(state="normal")
+            except:
+                pass
