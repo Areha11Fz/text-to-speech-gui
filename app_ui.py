@@ -29,8 +29,11 @@ class TTSApp(ctk.CTk):
         self._setup_ui()
 
         # --- GLOBAL HOTKEY SETUP ---
-        # Changed from 'shift+enter' to 'ctrl+space'
+        # Speech: Ctrl + Space
         keyboard.add_hotkey('ctrl+space', self.trigger_speech)
+        
+        # Clear Text: Ctrl + Shift + Space
+        keyboard.add_hotkey('ctrl+shift+space', self.trigger_clear_text)
 
         # Handle app closing safely
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -86,8 +89,8 @@ class TTSApp(ctk.CTk):
         self.clear_btn = ctk.CTkButton(self.btn_frame, text="Clear", fg_color="#555555", hover_color="#333333", command=self.clear_text)
         self.clear_btn.pack(side="left", padx=10)
 
-        # 7. Status (Updated Label Text)
-        self.status_label = ctk.CTkLabel(self, text="Ready (Global: Ctrl+Space)", text_color="gray")
+        # 7. Status
+        self.status_label = ctk.CTkLabel(self, text="Global: Ctrl+Space (Speak) | Ctrl+Shift+Space (Clear)", text_color="gray")
         self.status_label.pack(pady=5)
 
         self._toggle_secondary()
@@ -116,11 +119,22 @@ class TTSApp(ctk.CTk):
         self.trigger_speech()
         return "break"
 
+    def trigger_clear_text(self):
+        """Thread-safe wrapper for the global hotkey to clear text"""
+        # Global hotkeys run in a background thread. We use .after(0, func)
+        # to push the GUI update to the main UI thread to avoid crashes.
+        self.after(0, self.clear_text)
+
     def clear_text(self):
+        """Clears text, restores placeholder, and brings window to focus"""
         self.text_entry.delete("0.0", "end")
         self.text_entry.insert("0.0", self.placeholder_text)
         self.text_entry.configure(text_color="gray")
-        self.focus() 
+        
+        # Bring the window to the front so the user can start typing immediately
+        self.deiconify()
+        self.focus_force() 
+        self.text_entry.focus_set()
 
     def on_close(self):
         """Clean up hotkeys when closing"""
@@ -166,8 +180,7 @@ class TTSApp(ctk.CTk):
 
             for t in threads: t.join()
             
-            # Updated Status Label here as well
-            self.status_label.configure(text="Ready (Global: Ctrl+Space)", text_color="gray")
+            self.status_label.configure(text="Ready (Ctrl+Space)", text_color="gray")
 
         except Exception as e:
             self.status_label.configure(text=f"Error: {e}", text_color="red")
