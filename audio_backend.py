@@ -6,25 +6,27 @@ import numpy as np
 import os
 import tempfile
 
-# Helper for Windows COM threading
 try:
     import pythoncom
 except ImportError:
     pythoncom = None
 
+
 class AudioBackend:
     def __init__(self):
-        self.temp_file = os.path.join(tempfile.gettempdir(), "tts_temp_output.wav")
+        self.temp_file = os.path.join(
+            tempfile.gettempdir(), "tts_temp_output.wav")
         self.devices = self._scan_devices()
+        self.voices = self._scan_voices()  # <--- NEW: Load voices on startup
 
     def _scan_devices(self):
         """Internal: Scans and filters for WASAPI output devices."""
         devices = sd.query_devices()
         hostapis = sd.query_hostapis()
-        
-        # Find WASAPI index
-        wasapi_index = next((i for i, api in enumerate(hostapis) if "WASAPI" in api['name']), None)
-        
+
+        wasapi_index = next((i for i, api in enumerate(
+            hostapis) if "WASAPI" in api['name']), None)
+
         unique = []
         seen = set()
         for i, dev in enumerate(devices):
@@ -37,12 +39,31 @@ class AudioBackend:
                     seen.add(dev['name'])
         return unique
 
+    def _scan_voices(self):
+        """Internal: Scans for available system voices"""
+        if pythoncom:
+            pythoncom.CoInitialize()
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        # Store as a dictionary { "Voice Name": "Voice ID" }
+        voice_dict = {}
+        for v in voices:
+            # Clean up name (remove long path junk if present)
+            name = v.name.replace("Microsoft ", "").replace(" Desktop", "")
+            voice_dict[name] = v.id
+        del engine
+        if pythoncom:
+            pythoncom.CoUninitialize()
+        return voice_dict
+
     def get_device_names(self):
-        """Returns a list of device names for the GUI dropdown."""
         return [d['name'] for d in self.devices]
 
+    def get_voice_names(self):
+        """Returns list of human-readable voice names"""
+        return list(self.voices.keys())
+
     def get_default_device_name(self):
-        """Returns the name of the Windows default WASAPI device."""
         try:
             hostapis = sd.query_hostapis()
             for api in hostapis:
@@ -54,23 +75,30 @@ class AudioBackend:
             pass
         return None
 
-    def generate_tts_file(self, text, speed):
-        """Generates the WAV file using pyttsx3."""
-        if pythoncom: pythoncom.CoInitialize()
-        
+    def generate_tts_file(self, text, speed, voice_name=None):
+        """Generates WAV file with specific speed AND voice"""
+        if pythoncom:
+            pythoncom.CoInitialize()
+
         engine = pyttsx3.init()
         engine.setProperty('rate', int(speed))
+
+        # <--- NEW: Set the specific voice ID
+        if voice_name and voice_name in self.voices:
+            engine.setProperty('voice', self.voices[voice_name])
+
         engine.save_to_file(text, self.temp_file)
         engine.runAndWait()
         del engine
-        
-        if pythoncom: pythoncom.CoUninitialize()
+
+        if pythoncom:
+            pythoncom.CoUninitialize()
         return self.temp_file
 
     def play_audio(self, device_name):
-        """Plays the temp file to the specific device name with resampling."""
-        target_device = next((d for d in self.devices if d['name'] == device_name), None)
-        
+        target_device = next(
+            (d for d in self.devices if d['name'] == device_name), None)
+
         if not target_device:
             print(f"Device not found: {device_name}")
             return
@@ -79,11 +107,10 @@ class AudioBackend:
             data, fs = sf.read(self.temp_file)
             target_fs = int(target_device['default_samplerate'])
 
-            # Resample if needed
             if fs != target_fs:
                 number_of_samples = round(len(data) * float(target_fs) / fs)
                 data = scipy.signal.resample(data, number_of_samples)
-                fs = target_fs 
+                fs = target_fs
 
             sd.play(data, fs, device=target_device['id'])
             sd.wait()
